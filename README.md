@@ -72,6 +72,13 @@ VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 
 Restart the development server after updating these values.
 
+You can override the default development server port (`5171`) by setting the `PORT`
+environment variable when starting Vite:
+
+```bash
+PORT=5173 pnpm dev
+```
+
 ## Socials
 
 - **X:** Follow [@needim](https://x.com/needim) for the latest updates.
