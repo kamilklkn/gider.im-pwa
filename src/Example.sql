@@ -1,8 +1,7 @@
--- Create extensions
+-- Create extensions + helper trigger
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- helper: trigger to update updated_at
-CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+CREATE OR REPLACE FUNCTION public.trigger_set_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -10,7 +9,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- profiles: bağlantı auth.users(id)
+-- profiles (optional; links to auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name text,
@@ -25,111 +24,56 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 CREATE TRIGGER profiles_set_timestamp
 BEFORE UPDATE ON public.profiles
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
+FOR EACH ROW EXECUTE FUNCTION public.trigger_set_timestamp();
 
--- accounts / wallets
-CREATE TABLE IF NOT EXISTS public.accounts (
+-- entry_group (groups)
+CREATE TABLE IF NOT EXISTS public.entry_group (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
   name text NOT NULL,
-  type text NOT NULL, -- e.g. 'cash','bank','card','wallet'
-  currency text NOT NULL DEFAULT 'TRY',
-  balance numeric(14,2) DEFAULT 0,
-  metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_accounts_user ON public.accounts(user_id);
-
-CREATE TRIGGER accounts_set_timestamp
-BEFORE UPDATE ON public.accounts
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
-
--- categories (can be user-specific or global if user_id IS NULL)
-CREATE TABLE IF NOT EXISTS public.categories (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
-  name text NOT NULL,
-  type text NOT NULL, -- 'expense' | 'income' | 'transfer'
-  color text,
-  parent_id uuid REFERENCES public.categories(id) ON DELETE SET NULL,
-  metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_categories_user ON public.categories(user_id);
-
-CREATE TRIGGER categories_set_timestamp
-BEFORE UPDATE ON public.categories
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
-
--- transactions
-CREATE TABLE IF NOT EXISTS public.transactions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  account_id uuid NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
-  to_account_id uuid REFERENCES public.accounts(id) ON DELETE SET NULL, -- for transfers
-  category_id uuid REFERENCES public.categories(id) ON DELETE SET NULL,
-  amount numeric(14,2) NOT NULL,
-  currency text NOT NULL DEFAULT 'TRY',
-  type text NOT NULL, -- 'expense' | 'income' | 'transfer'
   description text,
-  occurred_at timestamptz NOT NULL DEFAULT now(),
   metadata jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_transactions_user ON public.transactions(user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_account ON public.transactions(account_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_occurred_at ON public.transactions(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_entry_group_user ON public.entry_group(user_id);
 
-CREATE TRIGGER transactions_set_timestamp
-BEFORE UPDATE ON public.transactions
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
+CREATE TRIGGER entry_group_set_timestamp
+BEFORE UPDATE ON public.entry_group
+FOR EACH ROW EXECUTE FUNCTION public.trigger_set_timestamp();
 
--- attachments for transactions (files stored in supabase storage; this stores metadata / url)
-CREATE TABLE IF NOT EXISTS public.attachments (
+-- entry (main records)
+CREATE TABLE IF NOT EXISTS public.entry (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  transaction_id uuid REFERENCES public.transactions(id) ON DELETE CASCADE,
-  url text NOT NULL,
-  file_name text,
-  file_size bigint,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  group_id uuid REFERENCES public.entry_group(id) ON DELETE SET NULL,
+  amount numeric(14,2) NOT NULL DEFAULT 0,
+  currency text DEFAULT 'TRY',
+  type text, -- e.g. 'expense'|'income'|'transfer'
+  description text,
+  occurred_at timestamptz DEFAULT now(),
   metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_attachments_user ON public.attachments(user_id);
-CREATE INDEX IF NOT EXISTS idx_attachments_transaction ON public.attachments(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_entry_user ON public.entry(user_id);
+CREATE INDEX IF NOT EXISTS idx_entry_group ON public.entry(group_id);
+CREATE INDEX IF NOT EXISTS idx_entry_occurred ON public.entry(occurred_at);
 
--- tags and join table
-CREATE TABLE IF NOT EXISTS public.tags (
+CREATE TRIGGER entry_set_timestamp
+BEFORE UPDATE ON public.entry
+FOR EACH ROW EXECUTE FUNCTION public.trigger_set_timestamp();
+
+-- recurring_config (scheduled rules)
+CREATE TABLE IF NOT EXISTS public.recurring_config (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
-  name text NOT NULL,
-  created_at timestamptz DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS public.transaction_tags (
-  transaction_id uuid NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
-  tag_id uuid NOT NULL REFERENCES public.tags(id) ON DELETE CASCADE,
-  PRIMARY KEY (transaction_id, tag_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tags_user ON public.tags(user_id);
-
--- recurring rules for scheduled transactions
-CREATE TABLE IF NOT EXISTS public.recurring_rules (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  account_id uuid REFERENCES public.accounts(id) ON DELETE SET NULL,
-  category_id uuid REFERENCES public.categories(id) ON DELETE SET NULL,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  group_id uuid REFERENCES public.entry_group(id) ON DELETE SET NULL,
   amount numeric(14,2) NOT NULL,
-  currency text NOT NULL DEFAULT 'TRY',
-  interval text NOT NULL, -- 'daily','weekly','monthly','yearly', or cron-like string
-  day_of_month int, -- optional
+  currency text DEFAULT 'TRY',
+  interval text NOT NULL, -- 'daily','weekly','monthly','yearly' or cron-like
   start_date date NOT NULL DEFAULT now(),
   end_date date,
   next_run timestamptz,
@@ -138,106 +82,81 @@ CREATE TABLE IF NOT EXISTS public.recurring_rules (
   updated_at timestamptz DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_recurring_user ON public.recurring_rules(user_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_user ON public.recurring_config(user_id);
 
-CREATE TRIGGER recurring_rules_set_timestamp
-BEFORE UPDATE ON public.recurring_rules
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
+CREATE TRIGGER recurring_config_set_timestamp
+BEFORE UPDATE ON public.recurring_config
+FOR EACH ROW EXECUTE FUNCTION public.trigger_set_timestamp();
 
--- budgets
-CREATE TABLE IF NOT EXISTS public.budgets (
+-- exclusion (exceptions for recurring rules)
+CREATE TABLE IF NOT EXISTS public.exclusion (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  category_id uuid REFERENCES public.categories(id) ON DELETE SET NULL,
-  amount numeric(14,2) NOT NULL,
-  period_start date NOT NULL,
-  period_end date NOT NULL,
+  recurring_id uuid NOT NULL REFERENCES public.recurring_config(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  excluded_date date NOT NULL,
+  reason text,
   metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_budgets_user ON public.budgets(user_id);
+CREATE INDEX IF NOT EXISTS idx_exclusion_user ON public.exclusion(user_id);
+CREATE INDEX IF NOT EXISTS idx_exclusion_recurring ON public.exclusion(recurring_id);
 
-CREATE TRIGGER budgets_set_timestamp
-BEFORE UPDATE ON public.budgets
-FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
+-- optional: attachments table (if code uploads files)
+CREATE TABLE IF NOT EXISTS public.attachments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  entry_id uuid REFERENCES public.entry(id) ON DELETE CASCADE,
+  url text NOT NULL,
+  file_name text,
+  file_size bigint,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz DEFAULT now()
+);
 
--- Row Level Security: enable and basic policies to allow users to manage their own rows
+CREATE INDEX IF NOT EXISTS idx_attachments_user ON public.attachments(user_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_entry ON public.attachments(entry_id);
+
+-- Enable RLS and create basic policies
 DO $$
 BEGIN
-  -- list of tables to enable RLS on
-  PERFORM 1 FROM pg_tables WHERE tablename = 'profiles';
-  -- enable RLS
-  ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.transaction_tags ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.recurring_rules ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
-EXCEPTION WHEN others THEN
-  -- ignore if any table doesn't exist yet
+  ALTER TABLE IF EXISTS public.profiles ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS public.entry_group ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS public.entry ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS public.recurring_config ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS public.exclusion ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS public.attachments ENABLE ROW LEVEL SECURITY;
+EXCEPTION WHEN OTHERS THEN
   NULL;
 END;
 $$;
 
--- Policies
--- profiles: allow user to INSERT a profile for their auth uid and read/update their own profile
-CREATE POLICY "profiles_owner" ON public.profiles
+-- policies: allow owners to operate on their rows
+CREATE POLICY IF NOT EXISTS "profiles_owner" ON public.profiles
   USING ( auth.uid() = id )
   WITH CHECK ( auth.uid() = id );
 
--- accounts
-CREATE POLICY "accounts_user_only" ON public.accounts
+CREATE POLICY IF NOT EXISTS "entry_group_user_only" ON public.entry_group
   USING ( auth.uid() = user_id )
   WITH CHECK ( auth.uid() = user_id );
 
--- categories
-CREATE POLICY "categories_user_only" ON public.categories
-  USING ( user_id IS NULL OR auth.uid() = user_id )  -- allow global (user_id IS NULL) + owner
-  WITH CHECK ( user_id IS NULL OR auth.uid() = user_id );
-
--- transactions
-CREATE POLICY "transactions_user_only" ON public.transactions
+CREATE POLICY IF NOT EXISTS "entry_user_only" ON public.entry
   USING ( auth.uid() = user_id )
   WITH CHECK ( auth.uid() = user_id );
 
--- attachments
-CREATE POLICY "attachments_user_only" ON public.attachments
+CREATE POLICY IF NOT EXISTS "recurring_user_only" ON public.recurring_config
   USING ( auth.uid() = user_id )
   WITH CHECK ( auth.uid() = user_id );
 
--- tags
-CREATE POLICY "tags_user_only" ON public.tags
-  USING ( user_id IS NULL OR auth.uid() = user_id )
-  WITH CHECK ( user_id IS NULL OR auth.uid() = user_id );
-
--- transaction_tags: allow ops only if user owns the transaction (checked via subquery)
-CREATE POLICY "transaction_tags_user_only" ON public.transaction_tags
-  USING ( EXISTS (SELECT 1 FROM public.transactions t WHERE t.id = transaction_tags.transaction_id AND t.user_id = auth.uid()) )
-  WITH CHECK ( EXISTS (SELECT 1 FROM public.transactions t WHERE t.id = transaction_tags.transaction_id AND t.user_id = auth.uid()) );
-
--- recurring rules
-CREATE POLICY "recurring_user_only" ON public.recurring_rules
+CREATE POLICY IF NOT EXISTS "exclusion_user_only" ON public.exclusion
   USING ( auth.uid() = user_id )
   WITH CHECK ( auth.uid() = user_id );
 
--- budgets
-CREATE POLICY "budgets_user_only" ON public.budgets
+CREATE POLICY IF NOT EXISTS "attachments_user_only" ON public.attachments
   USING ( auth.uid() = user_id )
   WITH CHECK ( auth.uid() = user_id );
 
--- Allow authenticated users to select/insert on profiles table to create their profile
-GRANT USAGE ON SCHEMA public TO authenticated;
--- Note: Supabase's default role names may vary; keep appropriate grants if needed.
-
--- Optional: example seed categories (global)
-INSERT INTO public.categories (id, user_id, name, type, color)
-VALUES
-  (gen_random_uuid(), NULL, 'Food', 'expense', '#FF6B6B'),
-  (gen_random_uuid(), NULL, 'Transport', 'expense', '#4D96FF'),
-  (gen_random_uuid(), NULL, 'Salary', 'income', '#2ECC71')
+-- Optional: seed a few global groups/categories (if desired)
+INSERT INTO public.entry_group (id, user_id, name)
+VALUES (gen_random_uuid(), NULL, 'Default')
 ON CONFLICT DO NOTHING;

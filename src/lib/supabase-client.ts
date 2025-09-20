@@ -58,3 +58,17 @@ export const supabaseRequest = async <T>(
                 return { data: null, error: error as Error };
         }
 };
+
+// Temporary debug: print envs to help diagnose getaddrinfo ENOTFOUND
+(function debugEnv() {
+  try {
+    const keys = ['VITE_SUPABASE_URL','VITE_SUPABASE_ANON_KEY','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY'];
+    const proxyKeys = ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','NO_PROXY','no_proxy'];
+    const env = Object.fromEntries(keys.map(k => [k, process.env[k] || null]));
+    const proxies = Object.fromEntries(proxyKeys.map(k => [k, process.env[k] || null]));
+    console.error('DEBUG supabase env:', env);
+    console.error('DEBUG proxy env:', proxies);
+  } catch (e) {
+    console.error('DEBUG env read failed', e);
+  }
+})();

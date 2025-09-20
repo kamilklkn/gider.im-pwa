@@ -9,7 +9,7 @@ import {
         type MutationOptions,
         type TagInput,
 } from "@/contexts/data";
-import { supabaseRequest } from "@/lib/supabase-client";
+import { supabase } from '../lib/supabase-client';
 import type {
         TEntryRow,
         TExclusionRow,
