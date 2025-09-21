@@ -16,9 +16,6 @@ import {
         supabaseRequest,
 } from "@/lib/supabase-client";
 
-import { getSupabaseAuthError, getSupabaseUserId, supabaseRequest } from "@/lib/supabase-client";
-
-import { supabaseRequest } from "@/lib/supabase-client";
 import type {
         TEntryRow,
         TExclusionRow,
@@ -226,7 +223,6 @@ const fetchRecurringConfigs = async (
 
         const configIds = configs.map((row) => row.id);
 
-        const inQuery = configIds.map((id) => `"${id}"`).join(",");
         const { data: recurringEntriesData, error: recurringEntriesError } = await supabaseRequest<RawEntryRow[]>((client) =>
                 client.from<RawEntryRow>(TABLES.entry).select("*").in("recurring_id", configIds),
         );

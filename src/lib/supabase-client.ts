@@ -22,13 +22,31 @@ if (!supabaseUrl || !supabaseAnonKey) {
         console.warn("Supabase environment variables are not configured.");
 } else {
         supabase = createClient(supabaseUrl, supabaseAnonKey, {
-                auth: { persistSession: false },
+                auth: {
+                        persistSession: true,
+                        autoRefreshToken: true,
+                        detectSessionInUrl: true,
+                },
+                global: {
+                        headers: {
+                                apikey: supabaseAnonKey,
+                                Authorization: `Bearer ${supabaseAnonKey}`,
+                        },
+                },
         });
+
+        if (import.meta.env.DEV) {
+                // @ts-ignore - yalnızca debug amacıyla global değişken ekleniyor.
+                window.supabase = supabase;
+        }
 
         supabase.auth.onAuthStateChange((_event, session) => {
                 supabaseUserId = session?.user?.id ?? null;
+                ensureUserPromise = null;
                 if (supabaseUserId) {
                         lastAuthError = null;
+                } else {
+                        lastAuthError = new Error("Supabase oturumu bulunamadı. Lütfen giriş yapın.");
                 }
         });
 }
@@ -81,26 +99,8 @@ const ensureSupabaseUser = async (): Promise<string | null> => {
                                         return existingUserId;
                                 }
 
-                                const { data: signInData, error: signInError } = await supabase!.auth.signInAnonymously();
-                                if (signInError) {
-                                        lastAuthError = toAuthError(signInError);
-                                        console.error("Failed to sign in anonymously with Supabase", signInError);
-                                        return null;
-                                }
-
-                                const anonymousUserId =
-                                        signInData.user?.id ?? signInData.session?.user?.id ?? null;
-                                if (!anonymousUserId) {
-                                        lastAuthError = new Error(
-                                                "Supabase anonymous sign-in did not return a user identifier.",
-                                        );
-                                        console.error(lastAuthError.message);
-                                        return null;
-                                }
-
-                                supabaseUserId = anonymousUserId;
-                                lastAuthError = null;
-                                return anonymousUserId;
+                                lastAuthError = new Error("Supabase oturumu bulunamadı. Lütfen giriş yapın.");
+                                return null;
                         } catch (error) {
                                 lastAuthError = error instanceof Error ? error : new Error(String(error));
                                 console.error("Unexpected Supabase auth error", error);
@@ -136,11 +136,7 @@ export const supabaseRequest = async <T>(
         if (!userId) {
                 return {
                         data: null,
-                        error:
-                                lastAuthError ??
-                                new Error(
-                                        "Unable to authenticate with Supabase. Please verify your authentication settings.",
-                                ),
+                        error: lastAuthError ?? new Error("Supabase ile kimlik doğrulaması yapılamadı. Lütfen giriş yapın."),
                 };
         }
 
@@ -156,3 +152,4 @@ export const supabaseRequest = async <T>(
         }
 };
 
+export { supabase };
