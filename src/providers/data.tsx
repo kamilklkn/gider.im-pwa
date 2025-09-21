@@ -13,6 +13,7 @@ import {
 import {
         getSupabaseAuthError,
         getSupabaseUserId,
+        supabase,
         supabaseRequest,
 } from "@/lib/supabase-client";
 
@@ -287,6 +288,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         const refresh = useCallback(async () => {
                 setLoading(true);
                 try {
+                        const userId = await getSupabaseUserId();
+                        if (!userId) {
+                                setGroups([]);
+                                setTags([]);
+                                setEntries([]);
+                                setRecurringConfigs([]);
+                                return;
+                        }
+
                         const fetchedGroups = await fetchGroups();
                         const groupsMap = new Map(fetchedGroups.map((group) => [group.id, group]));
 
@@ -310,6 +320,24 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         useEffect(() => {
                 void refresh();
         }, [refresh]);
+
+        useEffect(() => {
+                if (!supabase) return;
+                const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+                        if (session?.user?.id) {
+                                void refresh();
+                        } else {
+                                setGroups([]);
+                                setTags([]);
+                                setEntries([]);
+                                setRecurringConfigs([]);
+                        }
+                });
+
+                return () => {
+                        data?.subscription.unsubscribe();
+                };
+        }, [refresh, supabase]);
 
         const withRefresh = useCallback(
                 async (operation: () => Promise<void>) => {
