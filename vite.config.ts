@@ -6,6 +6,11 @@ import Unfonts from "unplugin-fonts/vite";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const DEFAULT_DEV_SERVER_PORT = 5171;
+const envPort = Number.parseInt(process.env.PORT ?? "", 10);
+const serverPort =
+        Number.isFinite(envPort) && envPort > 0 ? envPort : DEFAULT_DEV_SERVER_PORT;
+
 export default defineConfig({
         optimizeDeps: {
                 exclude: ["@sqlite.org/sqlite-wasm"],
@@ -17,10 +22,9 @@ export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(process.env.npm_package_version),
 	},
-	server: {
-		host: "0.0.0.0",
-		port: 5171,
-		strictPort: true,
+        server: {
+                host: "0.0.0.0",
+                port: serverPort,
 
 		...(process.env.NODE_ENV === "development" &&
 			fs.existsSync("./localhost-key.pem") &&
