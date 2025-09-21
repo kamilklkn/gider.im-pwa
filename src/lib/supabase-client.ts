@@ -11,6 +11,8 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Avoid referencing Node-specific globals (like process.env) so the client remains browser-safe.
+
 let supabase: SupabaseClient | null = null;
 let supabaseUserId: string | null = null;
 let ensureUserPromise: Promise<string | null> | null = null;
@@ -154,16 +156,3 @@ export const supabaseRequest = async <T>(
         }
 };
 
-// Temporary debug: print envs to help diagnose getaddrinfo ENOTFOUND
-(function debugEnv() {
-  try {
-    const keys = ['VITE_SUPABASE_URL','VITE_SUPABASE_ANON_KEY','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY'];
-    const proxyKeys = ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','NO_PROXY','no_proxy'];
-    const env = Object.fromEntries(keys.map(k => [k, process.env[k] || null]));
-    const proxies = Object.fromEntries(proxyKeys.map(k => [k, process.env[k] || null]));
-    console.error('DEBUG supabase env:', env);
-    console.error('DEBUG proxy env:', proxies);
-  } catch (e) {
-    console.error('DEBUG env read failed', e);
-  }
-})();
