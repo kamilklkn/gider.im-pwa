@@ -72,15 +72,7 @@ VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 
 Restart the development server after updating these values.
 
-Enable the **Anonymous Sign-in** provider in your Supabase project's authentication settings. The app creates an anonymous
-session to satisfy the row-level security policies and attaches the authenticated `user_id` to new records.
 
-You can override the default development server port (`5171`) by setting the `PORT`
-environment variable when starting Vite:
-
-```bash
-PORT=5173 pnpm dev
-```
 
 ## Socials
 
