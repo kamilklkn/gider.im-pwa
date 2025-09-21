@@ -12,7 +12,11 @@ import { EraseDataDrawer, type EraseDataDrawerRef } from "@/components/custom/v2
 import { PrivateKeyDrawer, type PrivateKeyDrawerRef } from "@/components/custom/v2/private-key-drawer";
 import { RestoreKeyDrawer, type RestoreKeyDrawerRef } from "@/components/custom/v2/restore-key-drawer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
 import { useLocalization } from "@/hooks/use-localization";
+import { supabase } from "@/lib/supabase-client";
 import { cn, storageKeys } from "@/lib/utils";
 import {
 	IconCashBanknoteFilled,
@@ -25,13 +29,15 @@ import {
 	IconHeartFilled,
 	IconKeyFilled,
 	IconLanguageHiragana,
+	IconLogin,
 	IconNumber123,
 	IconTagsFilled,
 	IconTrashXFilled,
 	type TablerIcon,
 } from "@tabler/icons-react";
 import type React from "react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
 function SettingsRow({
 	title,
@@ -53,12 +59,113 @@ function SettingsRow({
 }
 export function SettingsScreen() {
 	const { mainCurrency, m, decimalMode } = useLocalization();
+	const { toast } = useToast();
 	const groupDrawerRef = useRef<GroupDrawerRef>(null);
 	const tagDrawerRef = useRef<TagDrawerRef>(null);
 	const eraseDataDrawerRef = useRef<EraseDataDrawerRef>(null);
 	const privateKeyDrawerRef = useRef<PrivateKeyDrawerRef>(null);
 	const restoreKeyDrawerRef = useRef<RestoreKeyDrawerRef>(null);
+	const [authEmail, setAuthEmail] = useState("");
+	const [authPassword, setAuthPassword] = useState("");
+	const [authLoading, setAuthLoading] = useState(false);
+	const [signOutLoading, setSignOutLoading] = useState(false);
+	const [authError, setAuthError] = useState<string | null>(null);
+	const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 	const sponsorsEnabled = false;
+
+	useEffect(() => {
+		if (!supabase) {
+			setAuthError(m.SupabaseClientMissing());
+			return;
+		}
+
+		let isMounted = true;
+
+		void supabase.auth.getSession().then(({ data, error }) => {
+			if (!isMounted) return;
+			if (error) {
+				setAuthError(error.message);
+				return;
+			}
+			const email = data.session?.user?.email ?? null;
+			setCurrentUserEmail(email);
+			if (email) {
+				setAuthEmail(email);
+				setAuthError(null);
+			}
+		});
+
+		const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+			if (!isMounted) return;
+			const email = session?.user?.email ?? null;
+			setCurrentUserEmail(email);
+			if (email) {
+				setAuthEmail(email);
+				setAuthError(null);
+			} else {
+				setAuthPassword("");
+			}
+		});
+
+		return () => {
+			isMounted = false;
+			data?.subscription.unsubscribe();
+		};
+	}, [m]);
+
+	const handleSupabaseSignIn = async (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		if (!supabase) {
+			setAuthError(m.SupabaseClientMissing());
+			return;
+		}
+
+		setAuthLoading(true);
+		setAuthError(null);
+		try {
+			const email = authEmail.trim();
+			const { error } = await supabase.auth.signInWithPassword({
+				email,
+				password: authPassword,
+			});
+
+			if (error) {
+				setAuthError(error.message);
+				toast({ title: m.SupabaseSignInError(), description: error.message, variant: "destructive" });
+				return;
+			}
+
+			toast({
+				title: m.SupabaseSignInSuccess(),
+				description: m.SupabaseSignedInAs({ email }),
+			});
+			setAuthPassword("");
+		} finally {
+			setAuthLoading(false);
+		}
+	};
+
+	const handleSupabaseSignOut = async () => {
+		if (!supabase) {
+			setAuthError(m.SupabaseClientMissing());
+			return;
+		}
+
+		setSignOutLoading(true);
+		setAuthError(null);
+		try {
+			const { error } = await supabase.auth.signOut();
+			if (error) {
+				setAuthError(error.message);
+				toast({ title: m.SupabaseSignInError(), description: error.message, variant: "destructive" });
+				return;
+			}
+			toast({ title: m.SupabaseSignOutSuccess(), description: m.SupabaseNotSignedIn() });
+		} finally {
+			setSignOutLoading(false);
+		}
+	};
+
 	return (
 		<>
 			<div className="flex-1 h-svh overflow-y-auto py-4 relative">
@@ -135,6 +242,65 @@ export function SettingsScreen() {
 						<div>
 							<h1 className="text-xs text-zinc-400 dark:text-zinc-600 uppercase font-bold mb-1">{m.Data()}</h1>
 							<div className="px-2 -mx-2 text-sm flex flex-col gap-1">
+								<SettingsRow Icon={IconLogin} iconBackground="bg-purple-500" title={m.SupabaseSession()}>
+									<form className="flex flex-col gap-2 w-full max-w-xs" onSubmit={handleSupabaseSignIn}>
+										<div className="flex flex-col gap-1">
+											<Label htmlFor="supabase-email" className="text-xs text-muted-foreground">
+												{m.SupabaseEmail()}
+											</Label>
+											<Input
+												id="supabase-email"
+												type="email"
+												autoComplete="email"
+												value={authEmail}
+												onChange={(event) => setAuthEmail(event.target.value)}
+												required
+											/>
+										</div>
+										<div className="flex flex-col gap-1">
+											<Label htmlFor="supabase-password" className="text-xs text-muted-foreground">
+												{m.SupabasePassword()}
+											</Label>
+											<Input
+												id="supabase-password"
+												type="password"
+												autoComplete="current-password"
+												value={authPassword}
+												onChange={(event) => setAuthPassword(event.target.value)}
+												required
+											/>
+										</div>
+										{authError && <p className="text-xs text-red-500">{authError}</p>}
+										<div className="flex flex-col gap-1 text-right">
+											<span className="text-xs text-muted-foreground">
+												{currentUserEmail
+														? m.SupabaseSignedInAs({ email: currentUserEmail })
+														: m.SupabaseNotSignedIn()}
+											</span>
+											<div className="flex items-center justify-end gap-2">
+												{currentUserEmail && (
+													<Button
+														variant="outline"
+														size="sm"
+														type="button"
+														disabled={authLoading || signOutLoading}
+														onClick={handleSupabaseSignOut}
+													>
+														{m.SupabaseSignOut()}
+													</Button>
+												)}
+												<Button
+													size="sm"
+													type="submit"
+													disabled={authLoading || signOutLoading}
+													className="rounded"
+												>
+													{authLoading ? m.SupabaseSigningIn() : m.SupabaseSignIn()}
+												</Button>
+											</div>
+										</div>
+									</form>
+								</SettingsRow>
 								{/* <SettingsRow Icon={IconSquareArrowDownFilled} iconBackground="bg-lime-500" title="Import data">
 									<Button
 										size="sm"
