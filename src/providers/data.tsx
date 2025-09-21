@@ -9,6 +9,8 @@ import {
         type MutationOptions,
         type TagInput,
 } from "@/contexts/data";
+import { getSupabaseAuthError, getSupabaseUserId, supabaseRequest } from "@/lib/supabase-client";
+=======
 import { supabaseRequest } from "@/lib/supabase-client";
 import type {
         TEntryRow,
@@ -316,16 +318,30 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                 [refresh],
         );
 
+        const requireSupabaseUserId = useCallback(async () => {
+                const userId = await getSupabaseUserId();
+                if (userId) {
+                        return userId;
+                }
+
+                const authError = getSupabaseAuthError();
+                throw authError ?? new Error("Supabase authentication is required.");
+        }, []);
+
         const createGroup = useCallback(
                 async (name: string) => {
                         await withRefresh(async () => {
+                                const userId = await requireSupabaseUserId();
                                 const { error } = await supabaseRequest((client) =>
-                                        client.from(TABLES.entryGroup).insert({ name }),
+                                        client.from(TABLES.entryGroup).insert({
+                                                name,
+                                                user_id: userId,
+                                        }),
                                 );
                                 if (error) throw error;
                         });
                 },
-                [withRefresh],
+                [requireSupabaseUserId, withRefresh],
         );
 
         const deleteGroup = useCallback(
@@ -343,17 +359,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         const createTag = useCallback(
                 async (input: TagInput) => {
                         await withRefresh(async () => {
+                                const userId = await requireSupabaseUserId();
                                 const { error } = await supabaseRequest((client) =>
                                         client.from(TABLES.entryTag).insert({
                                                 name: input.name,
                                                 color: input.color,
                                                 suggest_id: input.suggestId,
+                                                user_id: userId,
                                         }),
                                 );
                                 if (error) throw error;
                         });
                 },
-                [withRefresh],
+                [requireSupabaseUserId, withRefresh],
         );
 
         const updateTagColor = useCallback(
@@ -382,6 +400,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
         const createEntry = useCallback(
                 async (input: CreateEntryInput, options?: MutationOptions) => {
+                        const userId = await requireSupabaseUserId();
                         const { data, error } = await supabaseRequest<{ id: string }>((client) =>
                                 client
                                         .from(TABLES.entry)
@@ -395,6 +414,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                                                 tag_id: input.tagId,
                                                 fullfilled: input.fullfilled,
                                                 recurring_id: input.recurringId,
+                                                user_id: userId,
                                         })
                                         .select("id")
                                         .single(),
@@ -410,11 +430,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                         }
                         return data?.id ?? null;
                 },
-                [refresh],
+                [refresh, requireSupabaseUserId],
         );
 
         const createRecurringConfig = useCallback(
                 async (input: CreateRecurringConfigInput, options?: MutationOptions) => {
+                        const userId = await requireSupabaseUserId();
                         const { data, error } = await supabaseRequest<{ id: string }>((client) =>
                                 client
                                         .from(TABLES.recurringConfig)
@@ -424,6 +445,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                                                 every: input.every,
                                                 start_date: input.startDate,
                                                 end_date: input.endDate,
+                                                user_id: userId,
                                         })
                                         .select("id")
                                         .single(),
@@ -439,7 +461,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                         }
                         return data?.id ?? null;
                 },
-                [refresh],
+                [refresh, requireSupabaseUserId],
         );
 
         const createExclusion = useCallback(
@@ -449,6 +471,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                         reason: "deletion" | "modification";
                         modifiedEntryId: string | null;
                 }, options?: MutationOptions) => {
+                        const userId = await requireSupabaseUserId();
                         const { data, error } = await supabaseRequest<{ id: string }>((client) =>
                                 client
                                         .from(TABLES.exclusion)
@@ -457,6 +480,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                                                 date: input.date,
                                                 reason: input.reason,
                                                 modified_entry_id: input.modifiedEntryId,
+                                                user_id: userId,
                                         })
                                         .select("id")
                                         .single(),
@@ -472,7 +496,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                         }
                         return data?.id ?? null;
                 },
-                [refresh],
+                [refresh, requireSupabaseUserId],
         );
 
         const updateEntry = useCallback(
