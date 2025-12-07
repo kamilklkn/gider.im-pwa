@@ -29,11 +29,27 @@ export const useFirebaseAuth = (): UseFirebaseAuthReturn => {
 		const unsubscribe = onAuthStateChanged(
 			auth,
 			(user) => {
-				setUser(user);
-				setLoading(false);
-				setError(null);
+				if (!user) {
+					// Otomatik anonymous giriş yap (production için)
+					console.log('🔄 Otomatik anonymous giriş yapılıyor...');
+					signInAnonymously(auth)
+						.then(() => {
+							console.log('✅ Otomatik anonymous giriş başarılı');
+						})
+						.catch((err) => {
+							console.error('❌ Otomatik anonymous giriş hatası:', err);
+							setError(err as AuthError);
+							setLoading(false);
+						});
+				} else {
+					console.log('✅ Kullanıcı giriş yapmış:', user.uid);
+					setUser(user);
+					setLoading(false);
+					setError(null);
+				}
 			},
 			(err) => {
+				console.error('❌ Auth state change hatası:', err);
 				setError(err);
 				setLoading(false);
 			},

@@ -1,0 +1,124 @@
+# 🔴 ZORUNLU: Firebase Security Rules
+
+## Veriler Firebase'e Gitmiyor - Çözüm
+
+Firebase config doğru ✅ ama veriler gitmiyorsa, %99 ihtimalle **Security Rules** sorunu!
+
+---
+
+## ⚡ Hızlı Çözüm (2 Dakika)
+
+### 1. Firebase Console'a Gidin
+[Firebase Console](https://console.firebase.google.com) → Projeniz (`gider-uygulamasi`)
+
+### 2. Firestore Database → Rules
+Sol menüden **Firestore Database** → **Rules** sekmesi
+
+### 3. Aşağıdaki Kuralları Yapıştırın
+
+**Mevcut tüm kuralları silin** ve aşağıdakini yapıştırın:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(2025, 12, 31);
+    }
+  }
+}
+```
+
+### 4. ⚠️ "Publish" Butonuna Tıklayın!
+
+**Bu çok önemli!** Kuralları yapıştırdıktan sonra mutlaka **"Publish"** butonuna tıklayın. Yoksa kurallar aktif olmaz!
+
+---
+
+## ✅ Test Etme
+
+1. **Sayfayı yenileyin** (F5)
+2. **Console'u açın** (F12)
+3. **Yeni entry oluşturun**
+4. Console'da şunu görmelisiniz:
+   ```
+   📤 Firebase'e kayıt başlatılıyor...
+   ✅ Entry Firebase'e kaydedildi!
+   ```
+5. **Firebase Console'da kontrol edin:**
+   - Firestore Database → **Data** → `entries` collection
+
+---
+
+## 🔐 Production İçin (Daha Sonra)
+
+Production'a geçtiğinizde şu kuralları kullanın:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    match /entries/{entryId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    match /entryGroups/{groupId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    match /entryTags/{tagId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    match /recurringConfigs/{configId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    match /exclusions/{exclusionId} {
+      allow read, write: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}
+```
+
+---
+
+## 📋 Kontrol Listesi
+
+- [ ] Firebase Console → Firestore → Rules'a gittim
+- [ ] Test mode kurallarını yapıştırdım
+- [ ] **"Publish" butonuna tıkladım** ⚠️
+- [ ] Anonymous Authentication etkin (Authentication → Sign-in method)
+- [ ] Sayfayı yeniledim
+- [ ] Yeni entry oluşturdum
+- [ ] Console'da başarı logları görüyorum
+- [ ] Firebase Console'da veriler görünüyor
+
+---
+
+## 🆘 Hala Çalışmıyorsa
+
+Console'da şu hatalardan birini görüyorsanız:
+
+**"permission-denied"**
+→ Security Rules'ı kontrol edin, "Publish" ettiniz mi?
+
+**"unauthenticated"**
+→ Anonymous Authentication etkin mi? (Authentication → Sign-in method)
+
+**"failed-precondition"**
+→ Index eksik, Firebase Console'da hata mesajındaki linke tıklayın
+

@@ -26,6 +26,9 @@ import { groupsQuery, tagsQuery } from "@/evolu-queries";
 import { cn } from "@/lib/utils";
 import type { TEntryType } from "@/types";
 import { cast, useEvolu, useQuery } from "@evolu/react";
+import { useFirebaseAuthContext } from "@/providers/firebase-auth";
+import { useFirebaseEntries } from "@/hooks/use-firebase-entries";
+import { dateToTimestamp, formatAmount } from "@/lib/firebase-helpers";
 import {
 	IconBackspaceFilled,
 	IconCalendarMonth,
@@ -60,6 +63,10 @@ export const EntryDrawer = forwardRef<EntryDrawerRef, {}>((_, ref) => {
 	const hideDecimalPoint = decimal === 0;
 
 	const { create } = useEvolu<TEvoluDB>();
+	
+	// Firebase hooks
+	const { user } = useFirebaseAuthContext();
+	const { createEntry: createFirebaseEntry } = useFirebaseEntries(user?.uid || null);
 
 	useImperativeHandle(ref, () => ({
 		openDrawer: (_startDate, _type) => {
@@ -113,17 +120,81 @@ export const EntryDrawer = forwardRef<EntryDrawerRef, {}>((_, ref) => {
 									: null,
 						}).id;
 
+			// Decode values for Evolu
+			const decodedName = decodeName(values.name);
+			const decodedAmount = decodeAmount(Number(values.amount).toFixed(8).toString());
+			const decodedCurrency = decodeCurrency(values.currency) || decodeCurrency(mainCurrency);
+			const decodedDate = decodeDate(values.startDate.toISOString());
+			const decodedGroupId = values.group ? decodeGroupId(values.group) : null;
+			const decodedTagId = values.tag ? decodeTagId(values.tag) : null;
+
+			// Save to Evolu (local-first)
 			create("entry", {
 				type: values.type,
-				name: decodeName(values.name),
-				amount: decodeAmount(Number(values.amount).toFixed(8).toString()),
-				currencyCode: decodeCurrency(values.currency) || decodeCurrency(mainCurrency),
-				date: decodeDate(values.startDate.toISOString()),
-				groupId: values.group ? decodeGroupId(values.group) : null,
-				tagId: values.tag ? decodeTagId(values.tag) : null,
+				name: decodedName,
+				amount: decodedAmount,
+				currencyCode: decodedCurrency,
+				date: decodedDate,
+				groupId: decodedGroupId,
+				tagId: decodedTagId,
 				fullfilled: cast(false),
 				recurringId: recurringId,
 			});
+
+			// Also save to Firebase (if user is authenticated)
+			if (user) {
+				try {
+					console.log('📤 Firebase\'e kayıt başlatılıyor...', {
+						userId: user.uid,
+						entryName: values.name,
+						entryType: values.type,
+					});
+					
+					const entryData = {
+						date: dateToTimestamp(values.startDate),
+						type: values.type,
+						name: values.name, // Use original name, not decoded
+						amount: formatAmount(Number(values.amount)),
+						fullfilled: false,
+						currencyCode: values.currency || mainCurrency,
+						recurringId: recurringId,
+						groupId: decodedGroupId,
+						tagId: decodedTagId,
+					};
+					
+					console.log('📦 Firebase entry data:', entryData);
+					
+					const entryId = await createFirebaseEntry(user.uid, entryData);
+					
+					console.log('✅ Entry Firebase\'e kaydedildi!', {
+						entryId,
+						userId: user.uid,
+					});
+				} catch (error) {
+					const errorCode = (error as { code?: string })?.code;
+					const errorMessage = (error as { message?: string })?.message;
+					
+					console.error('❌ Firebase kayıt hatası:', error);
+					console.error('📋 Hata detayları:', {
+						code: errorCode,
+						message: errorMessage,
+						userId: user.uid,
+						entryName: values.name,
+					});
+					
+					// Security Rules hatası kontrolü
+					if (errorCode === 'permission-denied') {
+						console.error('🔒 Security Rules hatası! Firebase Console\'da Rules\'ı kontrol edin.');
+						console.error('💡 Test mode için: allow read, write: if request.time < timestamp.date(2025, 12, 31);');
+						console.error('💡 Production için: Kullanıcı bazlı rules kullanın (FIREBASE_PRODUCTION_RULES.txt)');
+					}
+					
+					// Hata olsa bile Evolu kaydı devam eder (local-first yaklaşım)
+				}
+			} else {
+				console.warn('⚠️ Firebase\'e kayıt atlandı: Kullanıcı giriş yapmamış');
+				console.warn('💡 Otomatik giriş yapılıyor olmalı. Birkaç saniye bekleyip tekrar deneyin.');
+			}
 		}
 
 		setOpen(false);
