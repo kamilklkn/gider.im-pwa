@@ -7,6 +7,8 @@ import { useLocalization } from "@/hooks/use-localization";
 import { useEvolu, useQuery } from "@evolu/react";
 import { IconFolderOpen, IconPlus, IconTrash } from "@tabler/icons-react";
 import React, { forwardRef, useImperativeHandle } from "react";
+import { useFirebaseAuthContext } from "@/providers/firebase-auth";
+import * as firebaseService from "@/services/firebase-service";
 
 type GroupDrawerProps = {};
 
@@ -22,6 +24,9 @@ export const GroupDrawer = forwardRef<GroupDrawerRef, GroupDrawerProps>(
 		const groups = useQuery(groupsQuery);
 		const [open, setOpen] = React.useState(false);
 		const [newGroupName, setNewGroupName] = React.useState<string>("");
+		
+		// Firebase hooks
+		const { user } = useFirebaseAuthContext();
 
 		useImperativeHandle(ref, () => ({
 			openDrawer: () => {
@@ -66,10 +71,54 @@ export const GroupDrawer = forwardRef<GroupDrawerRef, GroupDrawerProps>(
 									variant="default"
 									size="icon"
 									className="shrink-0"
-									onClick={() => {
+									onClick={async () => {
+										const decodedName = decodeName(newGroupName);
+										
+										// Save to Evolu (local-first)
 										create("entryGroup", {
-											name: decodeName(newGroupName),
+											name: decodedName,
 										});
+										
+										// Also save to Firebase (if user is authenticated)
+										if (user) {
+											try {
+												console.log('📤 Firebase\'e group kayıt başlatılıyor...', {
+													userId: user.uid,
+													groupName: newGroupName,
+												});
+												
+												await firebaseService.createEntryGroup(user.uid, {
+													name: newGroupName, // Use original name, not decoded
+													icon: null,
+												});
+												
+												console.log('✅ Group Firebase\'e kaydedildi!', {
+													userId: user.uid,
+													groupName: newGroupName,
+												});
+											} catch (error) {
+												const errorCode = (error as { code?: string })?.code;
+												const errorMessage = (error as { message?: string })?.message;
+												
+												console.error('❌ Firebase group kayıt hatası:', error);
+												console.error('📋 Hata detayları:', {
+													code: errorCode,
+													message: errorMessage,
+													userId: user.uid,
+													groupName: newGroupName,
+												});
+												
+												// Security Rules hatası kontrolü
+												if (errorCode === 'permission-denied') {
+													console.error('🔒 Security Rules hatası! Firebase Console\'da Rules\'ı kontrol edin.');
+												}
+												
+												// Hata olsa bile Evolu kaydı devam eder (local-first yaklaşım)
+											}
+										} else {
+											console.log('ℹ️ Firebase\'e group kayıt atlandı: Kullanıcı giriş yapmamış');
+										}
+										
 										setNewGroupName("");
 									}}
 								>

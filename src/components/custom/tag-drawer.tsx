@@ -12,6 +12,8 @@ import { useLocalization } from "@/hooks/use-localization";
 import { useEvolu, useQuery } from "@evolu/react";
 import { IconPlus, IconTags, IconTrash } from "@tabler/icons-react";
 import React, { forwardRef, useImperativeHandle } from "react";
+import { useFirebaseAuthContext } from "@/providers/firebase-auth";
+import * as firebaseService from "@/services/firebase-service";
 
 type TagDrawerProps = {};
 
@@ -27,6 +29,9 @@ export const TagDrawer = forwardRef<TagDrawerRef, TagDrawerProps>((_, ref) => {
 	const [newTagName, setNewTagName] = React.useState<string>("");
 	const [newTagColor, setNewTagColor] = React.useState<string>("zinc");
 	const { m } = useLocalization();
+	
+	// Firebase hooks
+	const { user } = useFirebaseAuthContext();
 	useImperativeHandle(ref, () => ({
 		openDrawer: () => {
 			setOpen(true);
@@ -94,11 +99,58 @@ export const TagDrawer = forwardRef<TagDrawerRef, TagDrawerProps>((_, ref) => {
 								variant="default"
 								size="icon"
 								className="shrink-0"
-								onClick={() => {
+								onClick={async () => {
+									const decodedName = decodeName(newTagName);
+									
+									// Save to Evolu (local-first)
 									create("entryTag", {
-										name: decodeName(newTagName),
+										name: decodedName,
 										color: newTagColor,
 									});
+									
+									// Also save to Firebase (if user is authenticated)
+									if (user) {
+										try {
+											console.log('📤 Firebase\'e tag kayıt başlatılıyor...', {
+												userId: user.uid,
+												tagName: newTagName,
+												tagColor: newTagColor,
+											});
+											
+											await firebaseService.createEntryTag(user.uid, {
+												name: newTagName, // Use original name, not decoded
+												color: newTagColor,
+												suggestId: null,
+												icon: null,
+											});
+											
+											console.log('✅ Tag Firebase\'e kaydedildi!', {
+												userId: user.uid,
+												tagName: newTagName,
+											});
+										} catch (error) {
+											const errorCode = (error as { code?: string })?.code;
+											const errorMessage = (error as { message?: string })?.message;
+											
+											console.error('❌ Firebase tag kayıt hatası:', error);
+											console.error('📋 Hata detayları:', {
+												code: errorCode,
+												message: errorMessage,
+												userId: user.uid,
+												tagName: newTagName,
+											});
+											
+											// Security Rules hatası kontrolü
+											if (errorCode === 'permission-denied') {
+												console.error('🔒 Security Rules hatası! Firebase Console\'da Rules\'ı kontrol edin.');
+											}
+											
+											// Hata olsa bile Evolu kaydı devam eder (local-first yaklaşım)
+										}
+									} else {
+										console.log('ℹ️ Firebase\'e tag kayıt atlandı: Kullanıcı giriş yapmamış');
+									}
+									
 									setNewTagColor("zinc");
 									setNewTagName("");
 								}}
@@ -160,12 +212,43 @@ export const TagDrawer = forwardRef<TagDrawerRef, TagDrawerProps>((_, ref) => {
 											<Button
 												size="icon"
 												variant="outline"
-												onClick={() => {
+												onClick={async () => {
+													const decodedName = decodeName(tag.name);
+													
+													// Save to Evolu (local-first)
 													create("entryTag", {
-														name: decodeName(tag.name),
+														name: decodedName,
 														color: tag.color,
 														suggestId: tag.suggestId,
 													});
+													
+													// Also save to Firebase (if user is authenticated)
+													if (user) {
+														try {
+															console.log('📤 Firebase\'e suggested tag kayıt başlatılıyor...', {
+																userId: user.uid,
+																tagName: tag.name,
+																suggestId: tag.suggestId,
+															});
+															
+															await firebaseService.createEntryTag(user.uid, {
+																name: tag.name, // Use original name, not decoded
+																color: tag.color,
+																suggestId: tag.suggestId,
+																icon: null,
+															});
+															
+															console.log('✅ Suggested tag Firebase\'e kaydedildi!', {
+																userId: user.uid,
+																tagName: tag.name,
+															});
+														} catch (error) {
+															console.error('❌ Firebase suggested tag kayıt hatası:', error);
+															// Hata olsa bile Evolu kaydı devam eder (local-first yaklaşım)
+														}
+													} else {
+														console.log('ℹ️ Firebase\'e suggested tag kayıt atlandı: Kullanıcı giriş yapmamış');
+													}
 												}}
 											>
 												<IconPlus className="size-5" />

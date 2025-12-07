@@ -192,8 +192,8 @@ export const EntryDrawer = forwardRef<EntryDrawerRef, {}>((_, ref) => {
 					// Hata olsa bile Evolu kaydı devam eder (local-first yaklaşım)
 				}
 			} else {
-				console.warn('⚠️ Firebase\'e kayıt atlandı: Kullanıcı giriş yapmamış');
-				console.warn('💡 Otomatik giriş yapılıyor olmalı. Birkaç saniye bekleyip tekrar deneyin.');
+				console.log('ℹ️ Firebase\'e kayıt atlandı: Kullanıcı giriş yapmamış');
+				console.log('💡 Otomatik giriş yapılıyor olmalı. Birkaç saniye bekleyip tekrar deneyin.');
 			}
 		}
 
