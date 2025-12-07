@@ -10,7 +10,10 @@ import {
 import { FiltersProvider } from "@/providers/filters.tsx";
 import { LocalizationProvider } from "@/providers/localization.tsx";
 import { type Theme, ThemeProvider } from "@/providers/theme.tsx";
+import { FirebaseAuthProvider } from "@/providers/firebase-auth.tsx";
 import UpdatePrompt from "@/update-prompt.tsx";
+// Initialize Firebase early to ensure it's ready
+import "@/firebase";
 import { EvoluProvider } from "@evolu/react";
 import "dayjs/locale/en";
 import "dayjs/locale/tr";
@@ -31,18 +34,20 @@ window.oncontextmenu = () => false;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
 	<React.StrictMode>
-		<EvoluProvider value={evolu}>
-			<FiltersProvider>
-				<ThemeProvider defaultTheme={localTheme}>
-					<LocalizationProvider defaultLang={localLang}>
-						<App />
-						<Toaster />
-						<Suspense>
-							<UpdatePrompt />
-						</Suspense>
-					</LocalizationProvider>
-				</ThemeProvider>
-			</FiltersProvider>
-		</EvoluProvider>
+		<FirebaseAuthProvider>
+			<EvoluProvider value={evolu}>
+				<FiltersProvider>
+					<ThemeProvider defaultTheme={localTheme}>
+						<LocalizationProvider defaultLang={localLang}>
+							<App />
+							<Toaster />
+							<Suspense>
+								<UpdatePrompt />
+							</Suspense>
+						</LocalizationProvider>
+					</ThemeProvider>
+				</FiltersProvider>
+			</EvoluProvider>
+		</FirebaseAuthProvider>
 	</React.StrictMode>,
 );

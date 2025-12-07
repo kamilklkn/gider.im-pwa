@@ -13,7 +13,7 @@ function UpdatePrompt() {
 		onRegisteredSW: (_swURL, _registration) => {
 			_registration &&
 				setInterval(() => {
-					console.info("Checking for app update...");
+					// Silently check for updates (no console spam)
 					_registration.update();
 				}, PERIOD);
 		},

@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/components/custom/theme-toggle";
 import { EraseDataDrawer, type EraseDataDrawerRef } from "@/components/custom/v2/erase-data-drawer";
 import { PrivateKeyDrawer, type PrivateKeyDrawerRef } from "@/components/custom/v2/private-key-drawer";
 import { RestoreKeyDrawer, type RestoreKeyDrawerRef } from "@/components/custom/v2/restore-key-drawer";
+import { FirebaseTest } from "@/components/test/firebase-test";
 import { Button } from "@/components/ui/button";
 import { useLocalization } from "@/hooks/use-localization";
 import { cn, storageKeys } from "@/lib/utils";
@@ -31,7 +32,7 @@ import {
 	type TablerIcon,
 } from "@tabler/icons-react";
 import type React from "react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 function SettingsRow({
 	title,
@@ -58,6 +59,7 @@ export function SettingsScreen() {
 	const eraseDataDrawerRef = useRef<EraseDataDrawerRef>(null);
 	const privateKeyDrawerRef = useRef<PrivateKeyDrawerRef>(null);
 	const restoreKeyDrawerRef = useRef<RestoreKeyDrawerRef>(null);
+	const [showFirebaseTest, setShowFirebaseTest] = useState(false);
 	const sponsorsEnabled = false;
 	return (
 		<>
@@ -135,6 +137,18 @@ export function SettingsScreen() {
 						<div>
 							<h1 className="text-xs text-zinc-400 dark:text-zinc-600 uppercase font-bold mb-1">{m.Data()}</h1>
 							<div className="px-2 -mx-2 text-sm flex flex-col gap-1">
+								<SettingsRow Icon={IconCloudDownload} iconBackground="bg-blue-500" title="🔥 Firebase Test">
+									<Button
+										size="sm"
+										variant="outline"
+										className="rounded"
+										onClick={() => {
+											setShowFirebaseTest(!showFirebaseTest);
+										}}
+									>
+										{showFirebaseTest ? 'Gizle' : 'Test Et'} <IconChevronRight className="size-4 ml-1  relative -mr-1" />
+									</Button>
+								</SettingsRow>
 								{/* <SettingsRow Icon={IconSquareArrowDownFilled} iconBackground="bg-lime-500" title="Import data">
 									<Button
 										size="sm"
@@ -424,6 +438,12 @@ export function SettingsScreen() {
               {m.Reload()}
 						</button>
 					</div>
+
+					{showFirebaseTest && (
+						<div className="mt-6">
+							<FirebaseTest />
+						</div>
+					)}
 				</div>
 			</div>
 			<GroupDrawer ref={groupDrawerRef} />
